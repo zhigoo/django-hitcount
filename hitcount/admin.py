@@ -31,7 +31,7 @@ class HitAdmin(admin.ModelAdmin):
 #   b) have the `delete` command actually alter the HitCount
 #   c) remove the ability to 'add new hit'
 #
-#class HitInline(admin.TabularInline):
+#class HitInline(admin.StackedInline):
 #    model = Hit
 #    fk_name = 'hitcount'
 #    extra = 0

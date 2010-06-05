@@ -1,34 +1,13 @@
 import datetime
 
-from django.db import models
 from django.conf import settings
-from django.db.models import F
-
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth.models import User
 from django.contrib.contenttypes import generic
+from django.db import models
+from django.db.models import F
 
 from django.dispatch import Signal
-
-
-# SIGNALS #
-
-delete_hit_count = Signal(providing_args=['save_hitcount',])
-
-def delete_hit_count_callback(sender, instance,
-        save_hitcount=False, **kwargs):
-    '''
-    Custom callback for the Hit.delete() method.
-
-    Hit.delete(): removes the hit from the associated HitCount object.
-    Hit.delete(save_hitcount=True): preserves the hit for the associated
-        HitCount object.
-    '''
-    if not save_hitcount:
-        instance.hitcount.hits = F('hits') - 1
-        instance.hitcount.save()
-
-delete_hit_count.connect(delete_hit_count_callback)
 
 
 # EXCEPTIONS #
@@ -62,10 +41,37 @@ class HitManager(models.Manager):
         hours, and weeks.  It's creating a datetime.timedelta object.
         '''
         grace = getattr(settings, 'HITCOUNT_KEEP_HIT_ACTIVE', {'days':7})
-        period = datetime.datetime.utcnow() - datetime.timedelta(**grace)
+        period = datetime.datetime.now() - datetime.timedelta(**grace)
         queryset = self.get_query_set()
         queryset = queryset.filter(created__gte=period)
         return queryset.filter(*args, **kwargs)
+
+class HitCountManger(models.Manager):
+
+    def get_for_queryset(self, queryset, cutoff_datetime=None):
+        '''
+        Return the passed queryset with a `hits` value attached.  Optionally,
+        can specify a cutoff date for the hit counts (eg, seven days ago).
+
+        Thoughts:
+
+        - Am returning the list unsorted, but could maybe add an option for in
+          place sorting (descending or ascending).
+
+        - This is an expensive query, should enable caching (maybe via an
+          option like `cache=5 minutes` or something.
+        '''
+        ctype = ContentType.objects.get_for_model(queryset.model)
+        qs = self.get_query_set().filter(content_type__exact=ctype.pk)
+
+        for obj in queryset:
+            hitcount = qs.get(content_type=ctype.pk, object_pk=obj.pk)
+            if cutoff_datetime:
+                obj.hits = hitcount.hits_in_last(cutoff_datetime)
+            else:
+                obj.hits = hitcount.hits
+
+        return queryset
 
 
 # MODELS #
@@ -76,12 +82,14 @@ class HitCount(models.Model):
 
     '''
     hits            = models.PositiveIntegerField(default=0)
-    modified        = models.DateTimeField(default=datetime.datetime.utcnow)
+    modified        = models.DateTimeField(default=datetime.datetime.now)
     content_type    = models.ForeignKey(ContentType,
                         verbose_name="content cype",
                         related_name="content_type_set_for_%(class)s",)
     object_pk       = models.TextField('object ID')
     content_object  = generic.GenericForeignKey('content_type', 'object_pk')
+
+    objects = HitCountManger()
 
     class Meta:
         ordering = ( '-hits', )
@@ -95,7 +103,7 @@ class HitCount(models.Model):
         return u'%s' % self.content_object
 
     def save(self, *args, **kwargs):
-        self.modified = datetime.datetime.utcnow()
+        self.modified = datetime.datetime.now()
 
         if not self.pk and self.object_pk and self.content_type:
             # Because we are using a models.TextField() for `object_pk` to
@@ -116,7 +124,7 @@ class HitCount(models.Model):
 
         super(HitCount, self).save(*args, **kwargs)
 
-    def hits_in_last(self, **kwargs):
+    def hits_in_last(self, cutoff_datetime=None, **kwargs):
         '''
         Returns hit count for an object during a given time period.
 
@@ -130,8 +138,12 @@ class HitCount(models.Model):
         Accepts days, seconds, microseconds, milliseconds, minutes,
         hours, and weeks.  It's creating a datetime.timedelta object.
         '''
+
+        if cutoff_datetime: # provide your own datetime object
+            return self.hit_set.filter(created__gte=cutoff_datetime).count()
+
         assert kwargs, "Must provide at least one timedelta arg (eg, days=1)"
-        period = datetime.datetime.utcnow() - datetime.timedelta(**kwargs)
+        period = datetime.datetime.now() - datetime.timedelta(**kwargs)
         return self.hit_set.filter(created__gte=period).count()
 
     def get_content_object_url(self):
@@ -180,7 +192,7 @@ class Hit(models.Model):
         if not self.created:
             self.hitcount.hits = F('hits') + 1
             self.hitcount.save()
-            self.created = datetime.datetime.utcnow()
+            self.created = datetime.datetime.now()
 
         super(Hit, self).save(*args, **kwargs)
 
@@ -192,10 +204,13 @@ class Hit(models.Model):
         HitCount object's total.  However, under normal circumstances, a
         delete() will trigger a subtraction from the HitCount object's total.
 
-        NOTE: This doesn't work at all during a queryset.delete().
+        NOTE: This doesn't work during a queryset.delete() (because
+        queryset.delete() skips this function).
         '''
-        delete_hit_count.send(sender=self, instance=self,
-                save_hitcount=save_hitcount)
+        if not save_hitcount:
+            self.hitcount.hits = F('hits') - 1
+            self.hitcount.save()
+
         super(Hit, self).delete()
 
 

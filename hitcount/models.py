@@ -7,14 +7,13 @@ from django.contrib.contenttypes import generic
 from django.db import models
 from django.db.models import F
 
-from django.dispatch import Signal
-
 
 # EXCEPTIONS #
 
 class DuplicateContentObject(Exception):
     'If content_object already exists for this model'
     pass
+
 
 # MANAGERS #
 
@@ -50,6 +49,8 @@ class HitCountManger(models.Manager):
 
     def get_for_queryset(self, queryset, cutoff_datetime=None):
         '''
+        New Feature: still testing!
+
         Return the passed queryset with a `hits` value attached.  Optionally,
         can specify a cutoff date for the hit counts (eg, seven days ago).
 
@@ -93,7 +94,6 @@ class HitCount(models.Model):
 
     class Meta:
         ordering = ( '-hits', )
-        #unique_together = (("content_type", "object_pk"),)
         get_latest_by = "modified"
         db_table = "hitcount_hit_count"
         verbose_name = "Hit Count"
@@ -136,7 +136,9 @@ class HitCount(models.Model):
         For example: hits_in_last(days=7).
 
         Accepts days, seconds, microseconds, milliseconds, minutes,
-        hours, and weeks.  It's creating a datetime.timedelta object.
+        hours, and weeks as **kwargs - creating a datetime.timedelta object.
+
+        Alternately, you can pass it a datetime object as a cutoff.
         '''
 
         if cutoff_datetime: # provide your own datetime object
@@ -152,7 +154,6 @@ class HitCount(models.Model):
         implementing though it may take a couple steps.
         '''
         pass
-
 
 class Hit(models.Model):
     '''
@@ -213,9 +214,13 @@ class Hit(models.Model):
 
         super(Hit, self).delete()
 
-
-
 class BlacklistIP(models.Model):
+    '''
+    Model that holds all the blacklisted IPs.
+
+    TODO - add a method that could import a known list of nefarious IPs.
+
+    '''
     ip = models.CharField(max_length=40, unique=True)
 
     class Meta:
@@ -228,6 +233,10 @@ class BlacklistIP(models.Model):
 
 
 class BlacklistUserAgent(models.Model):
+    '''
+    Model that holds all the blacklisted User-Agents.
+
+    '''
     user_agent = models.CharField(max_length=255, unique=True)
 
     class Meta:

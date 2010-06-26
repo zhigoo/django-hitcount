@@ -4,7 +4,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes import generic
-from django.core.exceptions import DoesNotExist
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models import F
 
@@ -73,7 +73,7 @@ class HitCountManger(models.Manager):
                     obj.hits = hitcount.hits_in_last(cutoff_datetime)
                 else:
                     obj.hits = hitcount.hits
-            except DoesNotExist:
+            except ObjectDoesNotExist:
                 obj.hits = 0
 
         return queryset

@@ -31,6 +31,14 @@ def delete_hit_count_handler(sender, instance, save_hitcount=False, **kwargs):
     if not save_hitcount:
         instance.hitcount.decrease()
 
+class HitObj(models.Model):
+    content_type = models.ForeignKey(
+        ContentType, related_name="content_type_set_for_%(class)s", on_delete=models.CASCADE)
+    object_pk = models.PositiveIntegerField('object ID')
+    content_object = GenericForeignKey('content_type', 'object_pk')
+    date_obj = models.IntegerField(default=0)
+    source_type = models.IntegerField(default=0)
+
 
 @python_2_unicode_compatible
 class HitCount(models.Model):
@@ -38,13 +46,10 @@ class HitCount(models.Model):
     Model that stores the hit totals for any content object.
 
     """
+    hit_object = models.ForeignKey(HitObj)
     hits = models.PositiveIntegerField(default=0)
     modified = models.DateTimeField(auto_now=True)
-    content_type = models.ForeignKey(
-        ContentType, related_name="content_type_set_for_%(class)s", on_delete=models.CASCADE)
-    object_pk = models.PositiveIntegerField('object ID')
-    content_object = GenericForeignKey('content_type', 'object_pk')
-
+    source_type = models.IntegerField(default=0)
     objects = HitCountManager()
 
     class Meta:
